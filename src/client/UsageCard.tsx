@@ -63,6 +63,20 @@ export function UsageCard({
   const hasApiUsage =
     plan !== undefined &&
     (typeof plan.apiPercentUsed === 'number' || plan.apiSpend !== undefined || plan.apiLimit !== undefined);
+  // Cursor reports "You've hit your usage limit" as soon as the included
+  // Other-Models pool is exhausted, even while the overall plan still has
+  // allowance left. Only surface that banner when the whole plan is spent.
+  const totalExhausted =
+    plan?.remaining !== undefined
+      ? plan.remaining <= 0
+      : plan?.totalPercentUsed !== undefined
+        ? plan.totalPercentUsed >= 100
+        : false;
+  const displayMessage = typeof usage?.displayMessage === 'string' ? usage.displayMessage : undefined;
+  const showDisplayMessage =
+    displayMessage !== undefined &&
+    displayMessage.length > 0 &&
+    (!/usage limit|limit reached/i.test(displayMessage) || totalExhausted);
 
   return (
     <div className="cursorSubscriptionCard">
@@ -118,49 +132,52 @@ export function UsageCard({
               </span>
             ) : null}
           </div>
-          {typeof usage.displayMessage === 'string' && usage.displayMessage.length > 0 ? (
-            <p className="cursorSubscriptionMetaRow">{usage.displayMessage}</p>
+          {showDisplayMessage ? (
+            <p className="cursorSubscriptionMetaRow">{displayMessage}</p>
           ) : null}
           {hasAutoUsage || hasApiUsage ? (
-            <div className="cursorSubscriptionUsageSplit">
-              {hasAutoUsage
-                ? plan.autoSpend !== undefined || plan.autoLimit !== undefined
-                  ? (
-                    <UsageRow
-                      label={t('autoSpend')}
-                      used={plan.autoSpend}
-                      limit={plan.autoLimit}
-                      meta={`${moneyOf(plan.autoSpend)} / ${moneyOf(plan.autoLimit)}${typeof plan.autoPercentUsed === 'number' ? ` · ${percent(plan.autoPercentUsed)}%` : ''}`}
-                    />
-                  )
-                  : (
-                    <UsageRow
-                      label={t('autoSpend')}
-                      used={plan.autoPercentUsed}
-                      limit={100}
-                      meta={`${percent(plan.autoPercentUsed)}%`}
-                    />
-                  )
-                : null}
-              {hasApiUsage
-                ? plan.apiSpend !== undefined || plan.apiLimit !== undefined
-                  ? (
-                    <UsageRow
-                      label={t('apiSpend')}
-                      used={plan.apiSpend}
-                      limit={plan.apiLimit}
-                      meta={`${moneyOf(plan.apiSpend)} / ${moneyOf(plan.apiLimit)}${typeof plan.apiPercentUsed === 'number' ? ` · ${percent(plan.apiPercentUsed)}%` : ''}`}
-                    />
-                  )
-                  : (
-                    <UsageRow
-                      label={t('apiSpend')}
-                      used={plan.apiPercentUsed}
-                      limit={100}
-                      meta={`${percent(plan.apiPercentUsed)}%`}
-                    />
-                  )
-                : null}
+            <div className="cursorSubscriptionUsageGroup">
+              <span className="cursorSubscriptionUsageGroupHead">{t('modelPools')}</span>
+              <div className="cursorSubscriptionUsageSplit">
+                {hasAutoUsage
+                  ? plan.autoSpend !== undefined || plan.autoLimit !== undefined
+                    ? (
+                      <UsageRow
+                        label={t('autoSpend')}
+                        used={plan.autoSpend}
+                        limit={plan.autoLimit}
+                        meta={`${moneyOf(plan.autoSpend)} / ${moneyOf(plan.autoLimit)}${typeof plan.autoPercentUsed === 'number' ? ` · ${percent(plan.autoPercentUsed)}%` : ''}`}
+                      />
+                    )
+                    : (
+                      <UsageRow
+                        label={t('autoSpend')}
+                        used={plan.autoPercentUsed}
+                        limit={100}
+                        meta={`${percent(plan.autoPercentUsed)}%`}
+                      />
+                    )
+                  : null}
+                {hasApiUsage
+                  ? plan.apiSpend !== undefined || plan.apiLimit !== undefined
+                    ? (
+                      <UsageRow
+                        label={t('apiSpend')}
+                        used={plan.apiSpend}
+                        limit={plan.apiLimit}
+                        meta={`${moneyOf(plan.apiSpend)} / ${moneyOf(plan.apiLimit)}${typeof plan.apiPercentUsed === 'number' ? ` · ${percent(plan.apiPercentUsed)}%` : ''}`}
+                      />
+                    )
+                    : (
+                      <UsageRow
+                        label={t('apiSpend')}
+                        used={plan.apiPercentUsed}
+                        limit={100}
+                        meta={`${percent(plan.apiPercentUsed)}%`}
+                      />
+                    )
+                  : null}
+              </div>
             </div>
           ) : null}
           {plan !== undefined &&
@@ -169,18 +186,6 @@ export function UsageCard({
               {plan.totalLimit !== undefined ? <span>{`${t('planTotalLimit')}: ${moneyOf(plan.totalLimit)}`}</span> : null}
               {plan.totalSpend !== undefined ? <span>{`${t('planTotalSpend')}: ${moneyOf(plan.totalSpend)}`}</span> : null}
               {plan.remaining !== undefined ? <span>{`${t('planRemaining')}: ${moneyOf(plan.remaining)}`}</span> : null}
-            </div>
-          ) : null}
-          {plan !== undefined &&
-          (plan.limit !== undefined ||
-            plan.includedSpend !== undefined ||
-            plan.bonusLimit !== undefined ||
-            plan.bonusSpend !== undefined) ? (
-            <div className="cursorSubscriptionMetaRow">
-              {plan.limit !== undefined ? <span>{`${t('planLimit')}: ${moneyOf(plan.limit)}`}</span> : null}
-              {plan.includedSpend !== undefined ? <span>{`${t('planIncluded')}: ${moneyOf(plan.includedSpend)}`}</span> : null}
-              {plan.bonusLimit !== undefined ? <span>{`${t('planBonusLimit')}: ${moneyOf(plan.bonusLimit)}`}</span> : null}
-              {plan.bonusSpend !== undefined ? <span>{`${t('planBonus')}: ${moneyOf(plan.bonusSpend)}`}</span> : null}
             </div>
           ) : null}
           {spendLimit !== undefined &&

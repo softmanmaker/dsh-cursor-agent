@@ -29,6 +29,7 @@ export interface UsagePlan {
     apiSpend?: number;
     apiLimit?: number;
     totalSpend?: number;
+    totalPercentUsed?: number;
     includedSpend?: number;
     bonusSpend?: number;
     remaining?: number;

@@ -35,12 +35,9 @@ export declare const zh: {
     planName: string;
     usagePlanMissing: string;
     planTotalSpend: string;
-    planIncluded: string;
-    planBonus: string;
     planRemaining: string;
     planTotalLimit: string;
-    planLimit: string;
-    planBonusLimit: string;
+    modelPools: string;
     autoSpend: string;
     apiSpend: string;
     spendUsedOf: string;
@@ -116,12 +113,9 @@ export declare const en: {
     planName: string;
     usagePlanMissing: string;
     planTotalSpend: string;
-    planIncluded: string;
-    planBonus: string;
     planRemaining: string;
     planTotalLimit: string;
-    planLimit: string;
-    planBonusLimit: string;
+    modelPools: string;
     autoSpend: string;
     apiSpend: string;
     spendUsedOf: string;
