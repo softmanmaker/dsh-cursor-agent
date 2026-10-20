@@ -184,10 +184,15 @@ function abortError(signal) {
 	return signal?.reason instanceof Error ? signal.reason : new Error("Cursor join aborted");
 }
 
+/**
+ * Grace timer for an awaited promise. Deliberately ref'd: the caller is
+ * waiting on this sleep, and an unref'd timer would let a process with an
+ * otherwise idle event loop exit with an unsettled top-level await instead
+ * of delivering the orphan diagnostic.
+ */
 function sleep(ms: number) {
 	return new Promise<void>((resolve) => {
-		const timer = setTimeout(resolve, ms);
-		timer.unref?.();
+		setTimeout(resolve, ms);
 	});
 }
 
