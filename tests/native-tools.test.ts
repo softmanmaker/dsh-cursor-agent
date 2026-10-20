@@ -1441,7 +1441,7 @@ test("emitToolCall uses a fresh index after text/reasoning", () => {
 	assert.equal(blocks.text("after")[0].index, 3);
 });
 
-test("cursor joins settle once and await returns the same payload", async () => {
+test("cursor joins settle once and a repeated dispatch reuses the settled result", async () => {
 	resetCursorJoins();
 	openCursorJoin("join-1");
 	const pending = awaitCursorJoin("join-1");
@@ -1451,7 +1451,51 @@ test("cursor joins settle once and await returns the same payload", async () => 
 	assert.equal(result.text, "2 matches");
 	assert.equal(result.isError, false);
 	assert.equal(result.meta.total, 1);
-	await assert.rejects(() => awaitCursorJoin("join-1"), /no in-flight join/);
+	// A re-dispatched tool call (DSH replay/retry or a duplicate exec frame)
+	// must rejoin the settled result instead of failing with the old
+	// "no in-flight join" error for a join that already completed.
+	const replayed = await awaitCursorJoin("join-1");
+	assert.equal(replayed.text, "2 matches");
+	assert.equal(replayed.meta.total, 1);
+	resetCursorJoins();
+});
+
+test("cursor join adopts a producer that opens after the tool body starts", async () => {
+	resetCursorJoins();
+	const pending = awaitCursorJoin("late-join");
+	openCursorJoin("late-join");
+	settleCursorJoin("late-join", { text: "late result" });
+	assert.equal((await pending).text, "late result");
+	resetCursorJoins();
+});
+
+test("two concurrent consumers of one call id both receive the result", async () => {
+	resetCursorJoins();
+	openCursorJoin("dup-1");
+	const first = awaitCursorJoin("dup-1");
+	const second = awaitCursorJoin("dup-1");
+	settleCursorJoin("dup-1", { text: "once" });
+	assert.equal((await first).text, "once");
+	assert.equal((await second).text, "once");
+	resetCursorJoins();
+});
+
+test("cursor join reopens a consumed call id for a new dispatch", async () => {
+	resetCursorJoins();
+	openCursorJoin("reuse-1");
+	settleCursorJoin("reuse-1", { text: "first" });
+	assert.equal((await awaitCursorJoin("reuse-1")).text, "first");
+	// The producer (not the consumer) owns the fresh entry, so a second
+	// logical call under the same id never receives the stale result.
+	openCursorJoin("reuse-1");
+	settleCursorJoin("reuse-1", { text: "second" });
+	assert.equal((await awaitCursorJoin("reuse-1")).text, "second");
+	resetCursorJoins();
+});
+
+test("an orphaned tool call fails with the in-flight join diagnostic", async () => {
+	resetCursorJoins();
+	await assert.rejects(() => awaitCursorJoin("orphan-join"), /no in-flight join for orphan-join/);
 	resetCursorJoins();
 });
 

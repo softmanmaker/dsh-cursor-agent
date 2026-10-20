@@ -1400,7 +1400,7 @@ export class CursorAdapter extends LlmAdapter {
 	 * polls the channel and emits start → stdout/stderr deltas → exit →
 	 * shellResult + stream_close.
 	 */
-	#forwardShellStream(exec, id, run, debug, persisted, terminalsFolder) {
+	#forwardShellStream(exec, id, run, debug, persisted, terminalsFolder, signal) {
 		const task = (async () => {
 			const args = exec.args ?? {};
 			const command = args.command ?? "";
@@ -1422,16 +1422,25 @@ export class CursorAdapter extends LlmAdapter {
 				debug(`shellStream id=${exec.id} command=${JSON.stringify(command.slice(0, 100))}`);
 				write(encodeExecClientMessageEnvelope(encodeExecClientMessage(exec.id, exec.execId, 14, encodeShellStreamStart(args.sandboxPolicy?.type))));
 				const started = Date.now();
-				let channel = shellStreamChannels.get(id);
-				if (channel === undefined) {
-					// Wait for the ToolRuntime to start the bash call.
-					const deadline = Date.now() + 130_000;
-					while (channel === undefined && Date.now() < deadline) {
-						await sleep(100);
-						channel = shellStreamChannels.get(id);
-					}
+				// The bash tool publishes a holder before it starts the command,
+				// so this wait normally returns immediately. The channel inside
+				// stays unset while `startCursorShell` waits for a sandbox
+				// approval; that wait is the tool's, not a failed start, and the
+				// old 130s deadline used to answer "never started" while the
+				// command then ran unforwarded.
+				let holder = shellStreamChannels.get(id);
+				const deadline = Date.now() + 30 * 60_000;
+				while (holder === undefined && !signal?.aborted && Date.now() < deadline) {
+					await sleep(50);
+					holder = shellStreamChannels.get(id);
+				}
+				let channel = holder?.channel;
+				while (channel === undefined && !signal?.aborted && Date.now() < deadline) {
+					await sleep(50);
+					channel = holder?.channel;
 				}
 				if (channel === undefined) {
+					shellStreamChannels.delete(id);
 					const terminal = openTerminal(exec.id, started);
 					terminal?.finish({ exitCode: 1, aborted: true });
 					write(encodeExecClientMessageEnvelope(encodeExecClientMessage(exec.id, exec.execId, 2, encodeShellFailure({
@@ -1551,6 +1560,7 @@ export class CursorAdapter extends LlmAdapter {
 				write(encodeExecStreamClose(exec.id));
 				debug(`shellStream id=${exec.id} done code=${exitCode} bytes=${stdout.length + stderr.length}`);
 			} catch (forwardError) {
+				shellStreamChannels.delete(id);
 				debug(`shellStream id=${exec.id} forwarder failed: ${forwardError instanceof Error ? forwardError.message : String(forwardError)}`);
 			}
 		})();
@@ -1807,6 +1817,11 @@ export class CursorAdapter extends LlmAdapter {
 		const workdir = args.workingDirectory ?? "";
 		const timeoutMs = Number.isSafeInteger(args.timeout) && args.timeout > 0 ? args.timeout : 120_000;
 		const timeoutBehavior = Number.isSafeInteger(args.timeoutBehavior) ? args.timeoutBehavior : 0;
+		// Register the hand-off slot before starting: the forwarder may already
+		// be polling, and a sandbox approval can keep the actual channel unset
+		// for as long as the user takes.
+		const holder: any = { channel: undefined };
+		shellStreamChannels.set(id, holder);
 		try {
 			const started = await startCursorShell(world, {
 				command,
@@ -1817,25 +1832,37 @@ export class CursorAdapter extends LlmAdapter {
 				signal,
 				callId: id,
 			});
-			shellStreamChannels.set(id, started.channel);
+			holder.channel = started.channel;
 			void pumpCursorShell(started, { sleep, createPidProbe }).catch((error) => {
 				started.channel.error = error instanceof Error ? error.message : String(error);
 				started.channel.exitCode = 1;
 				started.channel.done = true;
 			});
-			void this.#forwardShellStream(exec, id, run, debug, persisted, terminalsFolder).then(() => {
+			void this.#forwardShellStream(exec, id, run, debug, persisted, terminalsFolder, signal).then(() => {
 				const channel = started.channel;
 				const failed = channel.error !== undefined || (channel.exitCode !== 0 && channel.exitCode !== null && channel.backgrounded !== true);
 				const text = channel.backgrounded === true
 					? `${channel.stdout}\nstarted background job ${channel.jobId ?? `bash-${channel.pid ?? id}`}`
 					: `${channel.stdout}${channel.exitCode === 0 ? "" : `\n[exit code: ${channel.exitCode}]`}`;
 				settleCursorJoin(id, { text, isError: failed });
+			}, (forwardError) => {
+				// The forwarder normally contains its own failures; settle here
+				// anyway so a bash tool call can never outlive its Cursor exec.
+				settleCursorJoin(id, {
+					text: forwardError instanceof Error ? forwardError.message : String(forwardError),
+					isError: true,
+				});
 			});
 		} catch (error) {
 			const text = error instanceof Error ? error.message : String(error);
-			shellStreamChannels.set(id, { chunks: [], stdout: "", done: true, exitCode: 1, error: text });
-			void this.#forwardShellStream(exec, id, run, debug, persisted, terminalsFolder);
-			settleCursorJoin(id, { text, isError: true });
+			holder.channel = { chunks: [], stdout: "", done: true, exitCode: 1, error: text };
+			// Settle after the failure reaches the wire: DSH resumes as soon as
+			// the join settles, and the server must not see a resume before the
+			// exec it is answering.
+			void this.#forwardShellStream(exec, id, run, debug, persisted, terminalsFolder, signal).then(
+				() => settleCursorJoin(id, { text, isError: true }),
+				() => settleCursorJoin(id, { text, isError: true }),
+			);
 		}
 	}
 
@@ -2679,9 +2706,15 @@ export class CursorAdapter extends LlmAdapter {
 			// concatenates rounds.
 			const streamBlocks = createStreamBlocks();
 			let execBatchPending = false;
-			const beginJoin = (id) => {
+			const beginJoin = (id, execId = undefined) => {
 				openCursorJoin(id);
-				pendingExecs.push({ kind: "join", toolCallId: id });
+				// `id` is the wire exec id used by the shell-stream forwarder
+				// map; `toolCallId` is the DSH id resume matches results on.
+				pendingExecs.push({
+					kind: "join",
+					toolCallId: id,
+					...execId !== undefined ? { id: execId } : {},
+				});
 				emittedToolCall = true;
 				toolCallPending = true;
 				execBatchPending = true;
@@ -2956,7 +2989,7 @@ export class CursorAdapter extends LlmAdapter {
 							const toolArgs: any = { command: shellArgs.command ?? "" };
 							if (shellArgs.workingDirectory) toolArgs.workdir = shellArgs.workingDirectory;
 							if (typeof shellArgs.description === "string" && shellArgs.description.length > 0) toolArgs.description = shellArgs.description;
-							beginJoin(id);
+							beginJoin(id, exec.id);
 							for (const chunk of emitToolCall(streamBlocks, { id, name: "bash", args: toolArgs })) yield chunk;
 							debug(`exec shellStreamArgs id=${exec.id} → exec-plane bash`);
 							trackWork(this.#answerNativeShell({
@@ -2976,7 +3009,7 @@ export class CursorAdapter extends LlmAdapter {
 							const world = worldFromAgent(this.agents?.get(sessionKey));
 							const toolArgs: any = { command: bgArgs.command ?? "", background: true };
 							if (bgArgs.workingDirectory) toolArgs.workdir = bgArgs.workingDirectory;
-							beginJoin(bgId);
+							beginJoin(bgId, exec.id);
 							for (const chunk of emitToolCall(streamBlocks, { id: bgId, name: "bash", args: toolArgs })) yield chunk;
 							debug(`exec backgroundShellSpawnArgs id=${exec.id} → exec-plane bash(background)`);
 							trackWork(this.#answerNativeBgShell({
