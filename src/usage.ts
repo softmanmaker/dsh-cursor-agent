@@ -245,6 +245,25 @@ export function decodeGetPlanInfo(bytes): any {
 	return { planInfo: planInfo === undefined ? undefined : { planName: textOrUndefined(planInfo[1]) } };
 }
 
+/**
+ * Derive the whole plan allowance in cents.
+ *
+ * Cursor's `planUsage.limit` is only the included Other-Models/API allowance
+ * (e.g. $400 on legacy Ultra); it is not the plan's total allowance. The
+ * server reports `totalPercentUsed` against the full allowance, so recover
+ * that allowance from `totalSpend` and the percentage. This matches what the
+ * Cursor dashboard shows (e.g. $3,170.58 spent at 90.588% => $3,500 total).
+ */
+function deriveTotalLimitCents(plan, limitCents) {
+	const totalSpend = finiteNumber(plan.totalSpend);
+	const totalPercent = finiteNumber(plan.totalPercentUsed);
+	if (totalSpend === undefined || totalSpend <= 0 || totalPercent === undefined || totalPercent <= 0) {
+		return undefined;
+	}
+	const derived = Math.round((totalSpend * 100) / totalPercent);
+	return limitCents === undefined ? derived : Math.max(limitCents, derived);
+}
+
 /** Project a (JSON or decoded-proto) `GetCurrentPeriodUsage` value. */
 export function projectCurrentPeriodUsage(input) {
 	if (!record(input)) return undefined;
@@ -252,11 +271,19 @@ export function projectCurrentPeriodUsage(input) {
 	const spendLimit = record(input.spendLimitUsage) ? input.spendLimitUsage : undefined;
 	const limitCents = plan === undefined ? undefined : finiteNumber(plan.limit);
 	const includedCents = plan === undefined ? undefined : finiteNumber(plan.includedSpend);
-	// protojson omits zero-valued fields, so a missing `remaining` usually
-	// means the plan is exhausted (remaining = 0 = limit - includedSpend).
+	const totalSpendCents = plan === undefined ? undefined : finiteNumber(plan.totalSpend);
+	const totalLimitCents = plan === undefined ? undefined : deriveTotalLimitCents(plan, limitCents);
+	const bonusLimitCents = totalLimitCents === undefined || limitCents === undefined
+		? undefined
+		: Math.max(0, totalLimitCents - limitCents);
+	// When the total allowance is known, remaining means the whole plan's
+	// remaining allowance. Cursor's own `remaining` only covers the included
+	// pool, so it is a fallback for payloads without a total percentage.
 	const remainingCents = plan === undefined ? undefined
-		: finiteNumber(plan.remaining)
-			?? (limitCents !== undefined && includedCents !== undefined ? limitCents - includedCents : undefined);
+		: totalLimitCents !== undefined && totalSpendCents !== undefined
+			? Math.max(0, totalLimitCents - totalSpendCents)
+			: finiteNumber(plan.remaining)
+				?? (limitCents !== undefined && includedCents !== undefined ? limitCents - includedCents : undefined);
 	return {
 		billingCycleStart: normalizeEpoch(input.billingCycleStart),
 		billingCycleEnd: normalizeEpoch(input.billingCycleEnd),
@@ -267,7 +294,9 @@ export function projectCurrentPeriodUsage(input) {
 			includedSpend: centsToDollars(plan.includedSpend),
 			bonusSpend: centsToDollars(plan.bonusSpend),
 			remaining: centsToDollars(remainingCents),
+			totalLimit: centsToDollars(totalLimitCents ?? limitCents),
 			limit: centsToDollars(plan.limit),
+			bonusLimit: centsToDollars(bonusLimitCents),
 			remainingBonus: boolish(plan.remainingBonus),
 			bonusTooltip: typeof plan.bonusTooltip === "string" ? plan.bonusTooltip : undefined,
 			autoSpend: centsToDollars(plan.autoSpend),

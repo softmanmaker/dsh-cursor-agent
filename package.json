@@ -1,6 +1,6 @@
 {
   "name": "@ginojin/dsh-cursor-agent",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "packageManager": "pnpm@11.19.0",
   "description": "Cursor Agent for DeepSeek Harness: browser login, token refresh, model discovery, and Cursor's server-side agent loop",
   "type": "module",

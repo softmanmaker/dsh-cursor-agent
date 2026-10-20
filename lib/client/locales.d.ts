@@ -38,7 +38,9 @@ export declare const zh: {
     planIncluded: string;
     planBonus: string;
     planRemaining: string;
+    planTotalLimit: string;
     planLimit: string;
+    planBonusLimit: string;
     autoSpend: string;
     apiSpend: string;
     spendUsedOf: string;
@@ -117,7 +119,9 @@ export declare const en: {
     planIncluded: string;
     planBonus: string;
     planRemaining: string;
+    planTotalLimit: string;
     planLimit: string;
+    planBonusLimit: string;
     autoSpend: string;
     apiSpend: string;
     spendUsedOf: string;

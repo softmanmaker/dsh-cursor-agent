@@ -16,7 +16,9 @@ export declare function projectCurrentPeriodUsage(input: any): {
         includedSpend: number;
         bonusSpend: number;
         remaining: number;
+        totalLimit: number;
         limit: number;
+        bonusLimit: number;
         remainingBonus: boolean;
         bonusTooltip: any;
         autoSpend: number;

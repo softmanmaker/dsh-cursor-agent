@@ -163,13 +163,24 @@ export function UsageCard({
                 : null}
             </div>
           ) : null}
-          {plan !== undefined ? (
+          {plan !== undefined &&
+          (plan.totalLimit !== undefined || plan.totalSpend !== undefined || plan.remaining !== undefined) ? (
             <div className="cursorSubscriptionMetaRow">
+              {plan.totalLimit !== undefined ? <span>{`${t('planTotalLimit')}: ${moneyOf(plan.totalLimit)}`}</span> : null}
               {plan.totalSpend !== undefined ? <span>{`${t('planTotalSpend')}: ${moneyOf(plan.totalSpend)}`}</span> : null}
-              {plan.includedSpend !== undefined ? <span>{`${t('planIncluded')}: ${moneyOf(plan.includedSpend)}`}</span> : null}
-              {plan.bonusSpend !== undefined ? <span>{`${t('planBonus')}: ${moneyOf(plan.bonusSpend)}`}</span> : null}
               {plan.remaining !== undefined ? <span>{`${t('planRemaining')}: ${moneyOf(plan.remaining)}`}</span> : null}
+            </div>
+          ) : null}
+          {plan !== undefined &&
+          (plan.limit !== undefined ||
+            plan.includedSpend !== undefined ||
+            plan.bonusLimit !== undefined ||
+            plan.bonusSpend !== undefined) ? (
+            <div className="cursorSubscriptionMetaRow">
               {plan.limit !== undefined ? <span>{`${t('planLimit')}: ${moneyOf(plan.limit)}`}</span> : null}
+              {plan.includedSpend !== undefined ? <span>{`${t('planIncluded')}: ${moneyOf(plan.includedSpend)}`}</span> : null}
+              {plan.bonusLimit !== undefined ? <span>{`${t('planBonusLimit')}: ${moneyOf(plan.bonusLimit)}`}</span> : null}
+              {plan.bonusSpend !== undefined ? <span>{`${t('planBonus')}: ${moneyOf(plan.bonusSpend)}`}</span> : null}
             </div>
           ) : null}
           {spendLimit !== undefined &&

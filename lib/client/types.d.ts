@@ -32,7 +32,9 @@ export interface UsagePlan {
     includedSpend?: number;
     bonusSpend?: number;
     remaining?: number;
+    totalLimit?: number;
     limit?: number;
+    bonusLimit?: number;
 }
 export interface UsageSpendLimit {
     pooledUsed?: number;

@@ -760,7 +760,10 @@ test("projectCurrentPeriodUsage converts cents to dollars and normalizes percent
 	assert.equal(projected.plan.totalSpend, 20);
 	assert.equal(projected.plan.includedSpend, 15);
 	assert.equal(projected.plan.bonusSpend, 2.5);
-	assert.equal(projected.plan.remaining, 5); // fallback: 2000 - 1500 cents
+	assert.equal(projected.plan.totalLimit, 36); // 2000 / 55.555% => 3600 cents
+	assert.equal(projected.plan.limit, 20);
+	assert.equal(projected.plan.bonusLimit, 16);
+	assert.equal(projected.plan.remaining, 16); // 3600 - 2000 cents
 	assert.equal(projected.plan.remainingBonus, false);
 	assert.equal(projected.plan.autoSpend, 8);
 	assert.equal(projected.plan.apiLimit, 20);
@@ -774,6 +777,38 @@ test("projectCurrentPeriodUsage converts cents to dollars and normalizes percent
 	assert.equal(projected.spendLimit.totalSpend, 30);
 	assert.equal(projected.spendLimit.overallLimit, 60);
 	assert.equal(projected.spendLimit.overallUsed, 5);
+});
+
+test("projectCurrentPeriodUsage reports the whole plan allowance, not only the included pool", () => {
+	// Legacy Ultra payload: `limit` is the $400 Other-Models allowance while
+	// totalPercentUsed is measured against the $3,500 overall allowance.
+	const projected = projectCurrentPeriodUsage({
+		planUsage: {
+			totalSpend: 317058,
+			includedSpend: 40000,
+			bonusSpend: 277058,
+			limit: 40000,
+			autoPercentUsed: 91.23933333333333,
+			apiPercentUsed: 86.68,
+			totalPercentUsed: 90.588,
+		},
+	});
+	assert.equal(projected.plan.totalLimit, 3500);
+	assert.equal(projected.plan.limit, 400);
+	assert.equal(projected.plan.bonusLimit, 3100);
+	assert.equal(projected.plan.totalSpend, 3170.58);
+	assert.equal(projected.plan.includedSpend, 400);
+	assert.equal(projected.plan.bonusSpend, 2770.58);
+	assert.equal(projected.plan.remaining, 329.42);
+});
+
+test("projectCurrentPeriodUsage falls back to the included pool without totalPercentUsed", () => {
+	const projected = projectCurrentPeriodUsage({
+		planUsage: { totalSpend: 2000, includedSpend: 1500, limit: 2000 },
+	});
+	assert.equal(projected.plan.totalLimit, 20);
+	assert.equal(projected.plan.bonusLimit, undefined);
+	assert.equal(projected.plan.remaining, 5);
 });
 
 test("decodeSandUsageStatus reads timestamps, percent, and the Grok none state", () => {
