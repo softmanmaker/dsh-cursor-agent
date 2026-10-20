@@ -3,10 +3,9 @@ import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import { dshHomePath } from "@deepseek-ai/dsh-home-paths";
 import { ToolCallId, LlmAdapter, LlmError } from "@deepseek-ai/dsh-llm";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, openSync, writeSync, closeSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, appendFileSync, openSync, writeSync, closeSync } from "node:fs";
 import os from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import http2 from "node:http2";
 import http from "node:http";
 import https from "node:https";
@@ -59,6 +58,14 @@ import {
 	pickCursorCheckpointEvent,
 } from "./checkpoint-log";
 import {
+	flattenBlocks,
+	injectionProducer,
+	isInjectionMessage,
+	isToolResultMessage,
+	toolResultsOf,
+} from "./messages";
+export { isToolResultMessage } from "./messages";
+import {
 	ACP_SYSTEM_SECTION,
 	applyCursorCompaction,
 	applySummaryFromPump,
@@ -79,7 +86,7 @@ import { nativeFetch } from "./fetch";
 export { name, inject, PROVIDER, CREDENTIAL_REF, CHANNEL, CURSOR_BASE_URL, CURSOR_LOGIN_URL, CURSOR_AUTH_ORIGIN, CURSOR_POLL_PATH, CURSOR_REFRESH_PATH, CURSOR_RUN_PATH, CURSOR_MODELS_PATH, CURSOR_NAME_AGENT_PATH, CURSOR_AVAILABLE_MODELS_PATH, DSH_SESSION_TITLE_FRAME_PREFIX, CURSOR_DASHBOARD_SERVICE, CURSOR_DASHBOARD_RPC, CURSOR_GET_ME_PATH, CURSOR_GET_PLAN_INFO_PATH, CURSOR_GET_CURRENT_PERIOD_USAGE_PATH, CURSOR_GET_SAND_USAGE_STATUS_PATH, USAGE_TTL_MS, CURSOR_CLIENT_VERSION, HEARTBEAT_INTERVAL_MS, STREAM_IDLE_TIMEOUT_MS, STREAM_PROGRESS_TIMEOUT_MS, SESSION_STATE_TTL_MS, MAX_TOOL_ROUNDS, DEFAULT_RETRY_COUNT, DEFAULT_RETRY_INTERVAL_MS, DEFAULT_RETRY_HTTP_STATUS_CODES, PARKED_BRIDGE_TIMEOUT_MS, SETTINGS_NAMESPACE, CURSOR_PRESET_ID, DEFAULT_REQUIRE_CURSOR_PRESET, REFRESH_AHEAD_MS, DEFAULT_TOKEN_LIFETIME_MS, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, CURSOR_NATIVE_TOOL_NAMES, isCursorNativeTool, FALLBACK_MODELS, CURSOR_AGENT_DEBUG_ENV, isCursorAgentDebugEnabled, cursorAgentDebug } from "./constants";
 import { name, inject, PROVIDER, CREDENTIAL_REF, CHANNEL, CURSOR_BASE_URL, CURSOR_LOGIN_URL, CURSOR_AUTH_ORIGIN, CURSOR_POLL_PATH, CURSOR_REFRESH_PATH, CURSOR_RUN_PATH, CURSOR_MODELS_PATH, CURSOR_NAME_AGENT_PATH, CURSOR_AVAILABLE_MODELS_PATH, DSH_SESSION_TITLE_FRAME_PREFIX, CURSOR_DASHBOARD_SERVICE, CURSOR_DASHBOARD_RPC, CURSOR_GET_ME_PATH, CURSOR_GET_PLAN_INFO_PATH, CURSOR_GET_CURRENT_PERIOD_USAGE_PATH, CURSOR_GET_SAND_USAGE_STATUS_PATH, USAGE_TTL_MS, CURSOR_CLIENT_VERSION, HEARTBEAT_INTERVAL_MS, STREAM_IDLE_TIMEOUT_MS, STREAM_PROGRESS_TIMEOUT_MS, SESSION_STATE_TTL_MS, MAX_TOOL_ROUNDS, DEFAULT_RETRY_COUNT, DEFAULT_RETRY_INTERVAL_MS, DEFAULT_RETRY_HTTP_STATUS_CODES, PARKED_BRIDGE_TIMEOUT_MS, SETTINGS_NAMESPACE, CURSOR_PRESET_ID, DEFAULT_REQUIRE_CURSOR_PRESET, REFRESH_AHEAD_MS, DEFAULT_TOKEN_LIFETIME_MS, DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_TOKENS, CURSOR_NATIVE_TOOL_NAMES, isCursorNativeTool, FALLBACK_MODELS, cursorAgentDebug } from "./constants";
 export { Config, resolveCursorSettings, resolveCursorApiBaseUrl, shouldRetryHttpStatus, isSuccessfulAgentResponse, abortableDelay } from "./settings";
-import { Config, resolveCursorSettings, shouldRetryHttpStatus, isSuccessfulAgentResponse, abortableDelay } from "./settings";
+import { resolveCursorSettings, shouldRetryHttpStatus, isSuccessfulAgentResponse, abortableDelay } from "./settings";
 export { CursorCredentialStore, classifyCursorSecret, getTokenExpiry, readJwtExpiry, maskApiKey, buildLoginUrl, assertCursorAuthUrl, commandForCursorAuthUrl, openCursorAuthUrl, CursorAuthService, CursorLoginCoordinator, createCursorRpcHandler, createCursorRpcHttpHandler } from "./auth";
 import { CursorCredentialStore, getTokenExpiry, maskApiKey, buildLoginUrl, assertCursorAuthUrl, commandForCursorAuthUrl, openCursorAuthUrl, CursorAuthService, CursorLoginCoordinator, createCursorRpcHandler, createCursorRpcHttpHandler } from "./auth";
 export { storeBlob, encodeResumeAction, encodeConversationActionMessage, encodeUserContextInjection, encodeSystemContextInjection, encodeInjectContextAction, encodeAsyncAskQuestionCompletionAction, encodeMcpToolCallStep, encodeReplayTurnBlob, appendTurnsToCheckpoint, encodeGetBlobResult, adoptBlobStore, encodeKvClientMessage, encodeSetBlobResult, encodeMcpResult, encodeExecClientMessage, encodeExecClientMessageEnvelope, encodeRequestContextResult, encodeMcpToolDefinition, encodeWriteRejected, encodeDeleteRejected, encodeWriteShellStdinError, encodeWriteShellStdinSuccess, encodeShellStreamStart, encodeShellStreamStdout, encodeShellStreamStderr, encodeOutputLocation, encodeShellStreamExit, encodeShellStreamBackgrounded, encodeShellSuccess, encodeShellFailure, encodeShellTimeout, encodeShellSpawnError, encodeShellPermissionDenied, encodeBackgroundShellSpawnSuccess, encodeBackgroundShellSpawnError, encodeReadSuccess, encodeReadError, encodeReadFileNotFound, encodeReadInvalidFile, encodeWriteSuccess, encodeWriteError, encodeInteractionResponseEnvelope, encodeExecStreamClose, encodeExecThrow, encodeAskQuestionSuccess, encodeAskQuestionResultSuccess, encodeAskQuestionResultError, encodeAskQuestionInteractionResponse, buildAskQuestionResultBytes, encodeInteractionApproved, encodeInteractionRejected, INTERACTION_UNAVAILABLE, rejectionForInteraction, normalizeCursorTodos, decodeAskQuestionInteractionQuery, decodeInteractionQuery, decodeReadArgs, decodeWriteArgs, decodeGrepArgs, decodeDeleteArgs, decodeSandboxPolicy, decodeShellArgs, decodeBackgroundShellSpawnArgs, decodeWriteShellStdinArgs, decodeConversationStateTodos, decodeConversationTokenDetails, decodeAgentServerMessage, decodeInteractionUpdate, decodeContextInjectionStateUpdate, decodeToolCallDisplay, decodeTurnEndedUpdate, projectCursorTokenUsage, decodeKvServerMessage, decodeExecServerMessage, decodeMcpArgs, decodeUsableModels, encodeNameAgentRequest, decodeNameAgentResponse, unwrapSessionTitleFrame, extractSessionTitleUserMessage } from "./wire/codec";
@@ -468,7 +475,8 @@ export class CursorRunPump {
 		if (this.stopped || message == null) return false;
 		if (isToolResultMessage(message)) return false;
 		const text = flattenBlocks(message.content).trim();
-		const imageBlocks = message.source?.kind === "plugin" ? [] : collectImageBlocks([message]);
+		const injection = isInjectionMessage(message);
+		const imageBlocks = injection ? [] : collectImageBlocks([message]);
 		if (text.length === 0 && imageBlocks.length === 0) return false;
 		const id = typeof message.id === "string" ? message.id : "";
 		const imageKey = imageBlocks.map((block) => block.attachment?.attachmentId).filter(Boolean).join(",");
@@ -484,11 +492,11 @@ export class CursorRunPump {
 			}
 		}
 		const injectionId = randomUUID();
-		const action = message.source?.kind === "plugin"
+		const action = injection
 			? encodeInjectContextAction({
 				injectionId,
 				expectedRunId: this.generationId,
-				systemContext: { producer: String(message.source.plugin ?? "plugin"), content: text },
+				systemContext: { producer: injectionProducer(message), content: text },
 			})
 			: encodeInjectContextAction({
 				injectionId,
@@ -496,7 +504,7 @@ export class CursorRunPump {
 				userContext: { text, messageId: id.length > 0 ? id : randomUUID(), images },
 			});
 		const ok = this.run.writeMessage(encodeConversationActionMessage(action));
-		this.debug(`inject ${message.source?.kind === "plugin" ? "system" : "user"} key=${key} images=${images.length} ok=${ok}`);
+		this.debug(`inject ${injection ? "system" : "user"} key=${key} images=${images.length} ok=${ok}`);
 		return ok;
 	}
 
@@ -734,18 +742,6 @@ export class CursorRunPump {
 //#endregion
 
 //#region conversation building
-function flattenBlocks(content) {
-	let text = "";
-	for (const block of content ?? []) {
-		if (block.type === "text") text += block.text;
-		else if (block.type === "tool-result") {
-			const callId = block.toolCallId ? ` for ${block.toolCallId}` : "";
-			text += `\n[TOOL RESULT${callId}]\n${flattenBlocks(block.content)}`;
-		}
-	}
-	return text;
-}
-
 function renderAssistant(content) {
 	let text = "";
 	for (const block of content ?? []) {
@@ -764,10 +760,6 @@ function actionBoundary(messages) {
 		if (messages[index].role === "assistant") return index + 1;
 	}
 	return 0;
-}
-
-export function isToolResultMessage(message) {
-	return (message?.content ?? []).some((block) => block.type === "tool-result");
 }
 
 /** DSH system slot plus any system-role history messages. */
@@ -794,11 +786,11 @@ export function classifyTurnIngress(options) {
 		if (isToolResultMessage(message)) continue;
 		const text = flattenBlocks(message.content).trim();
 		if (text.length === 0 && !contentHasImages(message.content)) continue;
-		if (message.source?.kind === "plugin") {
-			if (shouldDropCursorInject(message.source.plugin)) continue;
+		if (isInjectionMessage(message)) {
+			if (shouldDropCursorInject(injectionProducer(message))) continue;
 			injections.push({
 				id: message.id,
-				producer: String(message.source.plugin ?? "plugin"),
+				producer: injectionProducer(message),
 				content: text,
 				message,
 			});
@@ -836,18 +828,11 @@ export function allocateLocalToolCallId(raw, used) {
 	return candidate;
 }
 
-/** Extract DSH tool-result blocks for resuming a live Cursor exec bridge. */
+/** Extract DSH tool results for resuming a live Cursor exec bridge. */
 function collectToolResults(options) {
 	const results = [];
 	for (const message of options.messages ?? []) {
-		for (const block of message.content ?? []) {
-			if (block.type !== "tool-result") continue;
-			results.push({
-				toolCallId: block.toolCallId ?? message.source?.callId,
-				content: flattenBlocks(block.content).trim(),
-				isError: block.isError === true,
-			});
-		}
+		results.push(...toolResultsOf(message));
 	}
 	return results;
 }
@@ -1027,6 +1012,15 @@ export function buildConversationState(options) {
 		if (message.role === "user") {
 			flushTurn();
 			currentUser = flattenBlocks(message.content);
+			continue;
+		}
+		// DSH 0.2 carries tool results as first-class `tool` messages; the 0.1
+		// shape kept them inside a user message. Project both the same way: the
+		// result becomes the next turn's user text, as Cursor expects.
+		if (message.role === "tool") {
+			flushTurn();
+			const callId = message.toolCallId ? ` for ${message.toolCallId}` : "";
+			currentUser = `[TOOL RESULT${callId}]\n${flattenBlocks(message.content)}`.trim();
 			continue;
 		}
 		if (message.role === "assistant") {
@@ -3169,39 +3163,11 @@ export class CursorAdapter extends LlmAdapter {
 }
 
 /**
- * Parse a Connect end-stream frame into a structured error. Cursor's agent
- * errors carry a `debug` payload with a stable code and human-readable
- * `title`/`detail`; extracting those gives the user the real reason instead of
- * a bare `resource_exhausted`.
- * @returns {undefined | {code: string, debugCode?: string, message: string}}
+ * DSH 0.2 declares agent presets as bundle patch rows; the legacy
+ * `$DSH_HOME/.agent-presets/<id>` directory is no longer read. The Cursor
+ * preset therefore ships as the `preset-cursor-agent` row in this bundle's
+ * `cordis.patch.yml`, which mounts this package by name in its preset role.
  */
-function ensureCursorPresetInstalled(logger) {
-	try {
-		const targetDir = dshHomePath(".agent-presets", CURSOR_PRESET_ID);
-		const sourceDir = join(dirname(fileURLToPath(import.meta.url)), "..", "presets", CURSOR_PRESET_ID);
-		const sourceFile = join(sourceDir, "agent.cordis.yml");
-		const sourceMeta = join(sourceDir, "preset.yml");
-		if (!existsSync(sourceFile)) return;
-		const yml = readFileSync(sourceFile, "utf8")
-			.replaceAll(PRESET_ROW_ANCHOR, `name: '${import.meta.url.replace(/'/g, "''")}'`);
-		const targetFile = join(targetDir, "agent.cordis.yml");
-		const targetMeta = join(targetDir, "preset.yml");
-		const meta = existsSync(sourceMeta) ? readFileSync(sourceMeta, "utf8") : undefined;
-		const ymlUnchanged = existsSync(targetFile) && readFileSync(targetFile, "utf8") === yml;
-		const metaUnchanged = meta === undefined
-			|| (existsSync(targetMeta) && readFileSync(targetMeta, "utf8") === meta);
-		if (ymlUnchanged && metaUnchanged) return;
-		mkdirSync(targetDir, { recursive: true });
-		if (!ymlUnchanged) writeFileSync(targetFile, yml);
-		if (meta !== undefined && !metaUnchanged) writeFileSync(targetMeta, meta);
-		logger?.info(`cursor-agent: installed the "${CURSOR_PRESET_ID}" agent preset at ${targetFile}`);
-	} catch (error) {
-		logger?.warn(`cursor-agent: could not install the "${CURSOR_PRESET_ID}" agent preset: ${error instanceof Error ? error.message : String(error)}`);
-	}
-}
-
-/** The placeholder row name the in-package preset file uses; replaced with a file:// URL at install time. */
-const PRESET_ROW_ANCHOR = "name: ../../lib/index.js";
 
 /**
  * Build the stream()-time preset gate: rejects cursor-agent calls from
@@ -3305,22 +3271,43 @@ export function apply(ctx, config : any = {}) {
 		return applyCursorCompaction(ctx);
 	}
 	cursorAgentDebug("plugin loaded");
+	// DSH 0.2 removed `settings.installSection`; a plugin's form value now lives
+	// in the profile patch and is read through `settings.describe()`. The custom
+	// Cursor page still owns its own copy, so the generated page is disabled.
+	const settingsService = ctx.get("settings");
+	const settingsEntry = () => {
+		try {
+			return settingsService?.describe?.({ redactSecrets: true })
+				?.find((entry) => entry.ns === SETTINGS_NAMESPACE);
+		} catch {
+			return undefined;
+		}
+	};
 	let currentSettings = () => config;
 	let refreshRuntime = () => {};
-	ctx.get("settings").installSection(ctx, SETTINGS_NAMESPACE, Config, config, {
-		setSource: (source) => {
-			currentSettings = source;
-		},
-		onChange: () => refreshRuntime(),
-		validate: (value) => {
-			resolveCursorSettings(value);
-		},
-	});
-	const readSettings = () => resolveCursorSettings(currentSettings());
+	if (settingsService !== undefined && typeof settingsService.configure === "function") {
+		ctx.effect(() => {
+			try {
+				return settingsService.configure({ auto: false });
+			} catch (error) {
+				ctx.logger?.warn(`cursor-agent: settings page policy unavailable: ${error instanceof Error ? error.message : String(error)}`);
+				return () => {};
+			}
+		}, "cursor-agent: settings page policy");
+	}
+	ctx.effect(
+		() => (typeof ctx.on === "function"
+			? ctx.on("settings/document-updated", (ns) => {
+				if (ns === SETTINGS_NAMESPACE) refreshRuntime();
+			})
+			: () => {}),
+		"cursor-agent: settings refresh",
+	);
+	const readLiveSettings = () => settingsEntry()?.value ?? currentSettings();
+	const readSettings = () => resolveCursorSettings(readLiveSettings());
 	const readSettingsView = () => {
 		const value = readSettings();
-		const descriptor = ctx.get("settings")?.describe({ redactSecrets: true })
-			.find((entry) => entry.ns === SETTINGS_NAMESPACE);
+		const descriptor = settingsEntry();
 		return { ...value, revision: descriptor?.revision ?? 0 };
 	};
 	const settingsController = {
@@ -3402,6 +3389,5 @@ export function apply(ctx, config : any = {}) {
 	// Publish the cursor preset into the user discovery root so sessions can
 	// switch to it. Discovery re-reads the roots on every resolve, so a preset
 	// written here is visible to sessions created afterwards.
-	ensureCursorPresetInstalled(ctx.logger);
 }
 //#endregion

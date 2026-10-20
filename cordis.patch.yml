@@ -2,4 +2,59 @@
 # It leaves DSH's model and persistent web configuration untouched.
 - insert:
     - id: cursor-agent
-      name: 'dsh-cursor-agent'
+      name: '@ginojin/dsh-cursor-agent'
+    # Agent preset: the session world the adapter's native Cursor exec plane
+    # runs in (fs, subprocess, shell, jobs, approval, sandboxPolicy) plus the
+    # AskQuestion bridge and the todos projection. DSH 0.2 declares presets as
+    # patch rows; the legacy $DSH_HOME/.agent-presets directory is no longer
+    # read. The preset row resolves this package by name from the profile.
+    - id: preset-cursor-agent
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: cursor-agent
+        name: Cursor Agent
+        description: 在DSH中使用原生 Cursor Agent Loop，包括Cursor标准工具、上下文压缩、自动标题，获得和Cursor一致的速度与体验。
+        order: 50
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: >-
+                You are a coding agent powered by the {{model}} model. Your working directory is supplied as runtime context.
+                The harness provides three sandbox modes for your shell commands: read-only, workspace-write, and danger-full-access.
+                When a shell command needs wider permissions than the standing mode, do not retry blindly — ask the user to approve or switch modes.
+                Background shell results carry a pid from the host process namespace; it is the process GROUP leader. To stop a background task completely, run `kill -- -<pid>` (the negative pid signals the whole group). Killing only `kill <pid>` stops the shell wrapper and leaves its children orphaned.
+                If kill reports "no such process" because this environment isolates process namespaces, ask user to escalate to danger-full access.
+          # Execution backend for the AskQuestion interaction bridge.
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          # The adapter package in its preset role: jobs controller, harness
+          # identity section, todos projection, and join shims for DSH cards.
+          - id: cursor-tools
+            name: '@ginojin/dsh-cursor-agent'
+            config:
+              plane: preset
+            inject:
+              - tools
+              - jobs
+              - fs
+              - shell
+              - approval
+              - sandboxPolicy
+              - subprocess
+              - sessionProjections
+          # Cursor owns the model window: an empty isolate group hides host
+          # ctx.compaction for this preset only. `/compact` calls this engine,
+          # which triggers Cursor's summarize_action and writes the bracket back.
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: cursor-compaction
+                name: '@ginojin/dsh-cursor-agent'
+                config:
+                  plane: compaction
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'

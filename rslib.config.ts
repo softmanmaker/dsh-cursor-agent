@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { defineConfig, type RsbuildPlugin } from '@rslib/core';
@@ -6,7 +7,9 @@ import { defineConfig, type RsbuildPlugin } from '@rslib/core';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const generatedRoot = path.join(root, 'src/generated');
 
-const MODULE_LOADER_ID = 'dsh-cursor-agent';
+/** The client module id must be the exact package name: the module loader
+ * rejects a bundle that registers under any other id. */
+const MODULE_LOADER_ID = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).name;
 
 function pluginClientDts(): RsbuildPlugin {
   return {

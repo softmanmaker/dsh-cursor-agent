@@ -6,9 +6,11 @@
 # Dist
 node_modules
 dist/
-lib/
 storybook-static
 doc_build/
+
+# Release artifacts (published as GitHub Release assets)
+*.tgz
 
 # IDE
 .vscode/*
@@ -20,5 +22,3 @@ doc_build/
 .agents/skills/rslib*
 .agent/skills/rstest*
 
-# Plugin output
-lib/

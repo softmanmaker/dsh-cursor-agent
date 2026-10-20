@@ -17,6 +17,7 @@ import {
 	prepareImageFile,
 } from "@deepseek-ai/dsh-attachment-local";
 import { Writer } from "./proto";
+import { isInjectionMessage } from "./messages";
 
 /** Cloud Agent / CLI per-image byte cap. */
 export const READ_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
@@ -124,7 +125,7 @@ export function contentHasImages(content) {
 export function collectImageBlocks(messages = []) {
 	const blocks = [];
 	for (const message of messages ?? []) {
-		if (message?.source?.kind === "plugin") continue;
+		if (isInjectionMessage(message)) continue;
 		for (const block of message?.content ?? []) {
 			if (block?.type === "image" && block.attachment !== undefined) blocks.push(block);
 		}

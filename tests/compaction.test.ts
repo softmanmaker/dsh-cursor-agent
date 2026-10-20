@@ -276,8 +276,7 @@ test("applyCursorSummaryToSession writes the official bracket without llmStreamC
 	assert.equal(summaryEvent.data.model, "grok-4.6");
 	const replace = session.appended[2];
 	assert.deepEqual(replace.meta.surfaceOp, { op: "replace", start: 1, end: 1 });
-	assert.equal(replace.data.source.kind, "plugin");
-	assert.equal(replace.data.source.plugin, "compact");
+	assert.equal(replace.data.source.kind, "compact-checkpoint");
 	assert.equal(replace.data.source.compactionId, result.compactionId);
 	assert.match(replace.data.content[0].text, /<compacted-summary>/);
 	assert.match(replace.data.content[0].text, /Repo layout is src\/ plus tests\./);
@@ -368,8 +367,7 @@ test("applyCursorSummaryToSession is idempotent on the same summary fingerprint"
 
 test("compactCheckpointSource and frameCursorSummary match the DSH basic shape", () => {
 	const source = compactCheckpointSource("cid-1", "cmd-1");
-	assert.equal(source.kind, "plugin");
-	assert.equal(source.plugin, "compact");
+	assert.equal(source.kind, "compact-checkpoint");
 	assert.equal(source.compactionId, "cid-1");
 	assert.equal(source.sourceCommandId, "cmd-1");
 	const framed = frameCursorSummary("body");

@@ -17,7 +17,7 @@ const PROVIDER = "cursor-agent";
 const DENIED_MCP_TOOLS = new Set(["compress", "decompress", "search_context", "acp_status"]);
 
 /** Plugin inject producers that must not ride InjectContext onto Cursor. */
-const DENIED_INJECT_PLUGINS = new Set(["acp-nudge", "billion-context-dsh", "compact"]);
+const DENIED_INJECT_PLUGINS = new Set(["acp-nudge", "billion-context-dsh", "compact", "compact-checkpoint"]);
 
 /** ACP system-prompt section shadowed empty on the cursor-agent preset. */
 export const ACP_SYSTEM_SECTION = "billion-context-dsh";
@@ -28,7 +28,7 @@ const CHECKPOINT_PREAMBLE =
 	"This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Treat the captured context as established background and build on it without restating it. Continue the task directly from the messages that follow, without acknowledging this checkpoint.";
 
 /** Same marker `dsh-compaction/checkpoint` uses; constructed here so write-back does not load that package. */
-const COMPACT_CHECKPOINT_MARKER = Object.freeze({ kind: "plugin", plugin: "compact" });
+const COMPACT_CHECKPOINT_MARKER = Object.freeze({ kind: "compact-checkpoint" });
 
 /** Host `apply()` registers the adapter method; the isolated engine calls it. */
 let cursorSummarize;
